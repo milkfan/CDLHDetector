@@ -154,22 +154,7 @@ def train_v1(training_data, test_data, word_to_ix):
             i+=1
     torch.save(model, "model_v1.pt")
 
-    #用model给所有的testdata进行标记
-    print('start to testdata')
-    test_labels = {}
-    count = 0
-    for key, ast in test_data.items():
-        sentence = prepare_sequence(ast, word_to_ix)
-        target = model(sentence)[-1]
-        prediction = torch.max(target, 0)[1].data[0]
-        test_labels[key] = prediction
-        count+=1
-        if (count % 1000) == 1:
-            print(count)
-    #存入文件
-    print('finish test_label')
-    with open('test_labels_v1.txt', 'wb') as f:
-        pickle.dump(test_labels, f)
+    
 
 def get_result_csv_v1(model, test_data, word_to_ix):
     fields = ['id1_id2', 'predictions']
@@ -300,37 +285,56 @@ def train_v2(training_data, test_data, word_to_ix):
     
     torch.save(model, "model_v2.pt")
 
+def label_test_data(model, test_data, word_to_ix):
+    #用model给所有的testdata进行标记
+    print('start to label testdata')
+    test_labels = {}
+    count = 0
+    for key, ast in test_data.items():
+        sentence = prepare_sequence(ast, word_to_ix)
+        target = model(sentence)[-1]
+        test_labels[key] = target
+        count+=1
+        if (count % 1000) == 1:
+            print(count)
+    #存入文件
+    print('finish test_label')
+    with open('test_labels_v2.txt', 'wb') as f:
+        pickle.dump(test_labels, f)
+
+
 def generate_result(model, test_data, word_to_ix):
+    with open('test_labels_v2.txt', 'rb') as f:
+        test_labels = pickle.load(f)
     results = {}
     with open('sample_submission.csv', 'r') as fr:
         reader = csv.DictReader(fr)
         for row in reader:
             results[row['id1_id2']] = row['predictions']
     print('start to get my results')
+    model.training = False
+    print('train mode: ', model.training)
+    i = 0
     for id1_id2, _ in results.items():
         id1, id2 = id1_id2.split('_')
         id1_file = id1 + '.txt'
         id2_file = id2 + '.txt'
-        sentence_1 = test_data[id1_file]
-        sentence_2 = test_data[id2_file]
-
-        sentence_in_1 = prepare_sequence(sentence_1, word_to_ix)
-        sentence_in_2 = prepare_sequence(sentence_2, word_to_ix)
-        if (torch.cuda.is_available()):
-            sentence_in_1, sentence_in_2 = sentence_in_1.cuda(),  sentence_in_2.cuda()
-
-        tag_scores_1 = model(sentence_in_1)[-1]
-        tag_scores_2 = model(sentence_in_2)[-1]
+    
+        tag_scores_1 = test_labels[id1_file]
+        tag_scores_2 = test_labels[id2_file]
         #print(tag_scores_1, tag_scores_2)
         distance = F.pairwise_distance(tag_scores_1.view(1,-1), tag_scores_2.view(1,-1),p=1)
         #print(distance.data[0][0])
+        if i % 500 == 0:
+            print('%d distance: %f' % (i, distance.data[0][0]))
+        i+=1
         if (distance.data[0][0] > 1):
             results[id1_id2] = 0
     print('generate file')
     with open('my_submission.csv', 'w') as f:
         writer = csv.DictWriter(f, fieldnames=["id1_id2", "predictions"])
         writer.writeheader()
-        for id1_id2, predictions in results:
+        for id1_id2, predictions in results.items():
             writer.writerow({'id1_id2': id1_id2, 'predictions': predictions})
 
     
@@ -341,5 +345,6 @@ if __name__ == '__main__':
     model = torch.load('model_v2.pt')
     #train_v1(training_data, test_data, word_to_ix)
     #train_v2(training_data, test_data, word_to_ix)
+    #label_test_data(model, test_data, word_to_ix)
     generate_result(model, test_data, word_to_ix)
     

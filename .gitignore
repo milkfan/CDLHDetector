@@ -5,3 +5,5 @@ test
 train
 .DS_Store
 .ipynb_checkpoints
+test_labels*.txt
+my_submission*.csv
