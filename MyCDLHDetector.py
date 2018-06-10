@@ -228,8 +228,8 @@ def train_v2(training_data, test_data, word_to_ix):
     optimizer = optim.SGD(model.parameters(), lr=0.1)
     
     #start to train
-    i = 0
-    for epoch in range(1):
+    for epoch in range(2):
+        i = 0
         #训练相同的代码对
         epoch_loss = 0
         running_loss = 0
@@ -263,12 +263,13 @@ def train_v2(training_data, test_data, word_to_ix):
             if i % 200 == 199:
                 print(epoch, i+1,"running loss: ", running_loss/200)
                 running_loss = 0
-    print('finish to train same codes')
-    # 训练不同的代码对
-    for epoch in range(1):
+            if i == 2000:
+                break
+        print('epoch %d: finish to train same codes' % epoch)
+        # 训练不同的代码对
         epoch_loss = 0
         running_loss = 0
-        for i in range(82):
+        for i in range(6):
             print(i*500)
             for j in range(500):
                 if len(training_data[i*500+j]) == 0 or len(training_data[i*500+500+j]) == 0:
@@ -292,12 +293,11 @@ def train_v2(training_data, test_data, word_to_ix):
                 #print(loss.data[0])
                 epoch_loss += loss.data[0]
                 if j % 100 == 0:
-                    print(distance)
+                    #print(distance)
                     print(epoch, i+1,"running loss: ", running_loss/100)
                     running_loss = 0
-    print('finish to train different codes')
+        print('epoch %d: finish to train different codes' % epoch)
     
-
     torch.save(model, "model_v2.pt")
 
 def generate_result(model, test_data, word_to_ix):
