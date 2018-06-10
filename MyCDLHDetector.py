@@ -290,10 +290,36 @@ def train_v2(training_data, test_data, word_to_ix):
 
     torch.save(model, "model_v2.pt")
 
+def generate_result(model, test_data, word_to_ix):
+    results = {}
+    with open('sample_submission.csv', 'r') as fr:
+        reader = csv.DictReader(fr)
+        for row in reader:
+            results[row['id1_id2']] = row['predictions']
+    #start to get my results
+    for id1_id2, predictioins in results.items():
+        id1, id2 = id1_id2.split('_')
+        id1_file = id1 + '.txt'
+        id2_file = id2 + '.txt'
+        sentence_1 = test_data[id1_file]
+        sentence_2 = test_data[id2_file]
+
+        sentence_in_1 = prepare_sequence(sentence_1, word_to_ix)
+        sentence_in_2 = prepare_sequence(sentence_2, word_to_ix)
+        if (torch.cuda.is_available()):
+            sentence_in_1, sentence_in_2 = sentence_in_1.cuda(),  sentence_in_2.cuda()
+
+        tag_scores_1 = model(sentence_in_1)[-1]
+        tag_scores_2 = model(sentence_in_2)[-1]
+        #print(tag_scores_1, tag_scores_2)
+        distance = F.pairwise_distance(tag_scores_1.view(1,-1), tag_scores_2.view(1,-1))
+        print(distance)
 if __name__ == '__main__':
     #preprocess()
     training_data, test_data, word_to_ix = get_datas_from_files()
-    model_v1 = torch.load('model_v1.pt')
+    #model_v1 = torch.load('model_v1.pt')
+    model_v2 = torch.load('model_v2.pt')
     #train_v1(training_data, test_data, word_to_ix)
-    train_v2(training_data, test_data, word_to_ix)
+    #train_v2(training_data, test_data, word_to_ix)
+    generate_result(model_v2, test_data, word_to_ix)
     #et_result_csv_v1(model_v1, test_data, word_to_ix)
