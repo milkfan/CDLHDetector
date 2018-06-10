@@ -1,0 +1,7 @@
+__pycache__
+.vscode
+JOS-template
+test
+train
+.DS_Store
+.ipynb_checkpoints
