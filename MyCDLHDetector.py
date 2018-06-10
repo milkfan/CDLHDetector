@@ -306,8 +306,8 @@ def generate_result(model, test_data, word_to_ix):
         reader = csv.DictReader(fr)
         for row in reader:
             results[row['id1_id2']] = row['predictions']
-    #start to get my results
-    for id1_id2, predictioins in results.items():
+    print('start to get my results')
+    for id1_id2, _ in results.items():
         id1, id2 = id1_id2.split('_')
         id1_file = id1 + '.txt'
         id2_file = id2 + '.txt'
@@ -323,7 +323,15 @@ def generate_result(model, test_data, word_to_ix):
         tag_scores_2 = model(sentence_in_2)[-1]
         #print(tag_scores_1, tag_scores_2)
         distance = F.pairwise_distance(tag_scores_1.view(1,-1), tag_scores_2.view(1,-1),p=1)
-        print(distance)
+        #print(distance.data[0][0])
+        if (distance.data[0][0] > 1):
+            results[id1_id2] = 0
+    print('generate file')
+    with open('my_submission.csv', 'w') as f:
+        writer = csv.DictWriter(f, fieldnames=["id1_id2", "predictions"])
+        writer.writeheader()
+        for id1_id2, predictions in results:
+            writer.writerow({'id1_id2': id1_id2, 'predictions': predictions})
 
     
 if __name__ == '__main__':
@@ -332,6 +340,6 @@ if __name__ == '__main__':
     #model_v1 = torch.load('model_v1.pt')
     model = torch.load('model_v2.pt')
     #train_v1(training_data, test_data, word_to_ix)
-    train_v2(training_data, test_data, word_to_ix)
-    #generate_result(model_v2, test_data, word_to_ix)
+    #train_v2(training_data, test_data, word_to_ix)
+    generate_result(model, test_data, word_to_ix)
     
