@@ -228,28 +228,6 @@ def train_v2(training_data, test_data, word_to_ix):
     optimizer = optim.SGD(model.parameters(), lr=0.1)
     
     #start to train
-    # 训练不同的代码对
-    for epoch in range(1):
-        for i in range(82):
-            print(i*500)
-            for j in range(500):
-                if len(training_data[i*500+j]) == 0 or len(training_data[i*500+500+j]) == 0:
-                    continue
-                model.zero_grad()
-                model.hidden = model.init_hidden()
-
-                sentence_in_1 = prepare_sequence(training_data[i*500+j], word_to_ix)
-                sentence_in_2 = prepare_sequence(training_data[i*500+500+j], word_to_ix)
-                if (torch.cuda.is_available()):
-                    sentence_in_1, sentence_in_2 = sentence_in_1.cuda(),  sentence_in_2.cuda()
-                tag_scores_1 = model(sentence_in_1)[-1]
-                tag_scores_2 = model(sentence_in_2)[-1]
-                distance = F.pairwise_distance(tag_scores_1.view(1,-1), tag_scores_2.view(1,-1))
-            
-                loss = loss_funciton(distance, autograd.Variable(torch.FloatTensor([-1.0])))
-                loss.backward()
-                optimizer.step()
-    print('finish to train different codes')
     i = 0
     for epoch in range(1):
         #训练相同的代码对
@@ -271,8 +249,7 @@ def train_v2(training_data, test_data, word_to_ix):
             tag_scores_1 = model(sentence_in_1)[-1]
             tag_scores_2 = model(sentence_in_2)[-1]
             #print(tag_scores_1, tag_scores_2)
-            distance = F.pairwise_distance(tag_scores_1.view(1,-1), tag_scores_2.view(1,-1))
-            #print(distance)
+            distance = F.pairwise_distance(tag_scores_1.view(1,-1), tag_scores_2.view(1,-1),p=1)
             #print(tag_scores[-1],targets)
             #print(distance.data, torch.FloatTensor([1.0]))
             loss = loss_funciton(distance, autograd.Variable(torch.FloatTensor([1.0])))
@@ -283,10 +260,43 @@ def train_v2(training_data, test_data, word_to_ix):
             running_loss += loss.data[0]
             epoch_loss += loss.data[0]
             i+=1
-            if i % 2000 == 1999:
-                print(epoch, i+1,"running loss: ", running_loss/2000)
+            if i % 200 == 199:
+                print(epoch, i+1,"running loss: ", running_loss/200)
                 running_loss = 0
     print('finish to train same codes')
+    # 训练不同的代码对
+    for epoch in range(1):
+        epoch_loss = 0
+        running_loss = 0
+        for i in range(82):
+            print(i*500)
+            for j in range(500):
+                if len(training_data[i*500+j]) == 0 or len(training_data[i*500+500+j]) == 0:
+                    continue
+                model.zero_grad()
+                model.hidden = model.init_hidden()
+
+                sentence_in_1 = prepare_sequence(training_data[i*500+j], word_to_ix)
+                sentence_in_2 = prepare_sequence(training_data[i*500+500+j], word_to_ix)
+                if (torch.cuda.is_available()):
+                    sentence_in_1, sentence_in_2 = sentence_in_1.cuda(),  sentence_in_2.cuda()
+                tag_scores_1 = model(sentence_in_1)[-1]
+                tag_scores_2 = model(sentence_in_2)[-1]
+                distance = F.pairwise_distance(tag_scores_1.view(1,-1), tag_scores_2.view(1,-1),p=1)
+            
+                loss = loss_funciton(distance, autograd.Variable(torch.FloatTensor([-1.0])))
+                loss.backward()
+                optimizer.step()
+
+                running_loss += loss.data[0]
+                #print(loss.data[0])
+                epoch_loss += loss.data[0]
+                if j % 100 == 0:
+                    print(distance)
+                    print(epoch, i+1,"running loss: ", running_loss/100)
+                    running_loss = 0
+    print('finish to train different codes')
+    
 
     torch.save(model, "model_v2.pt")
 
@@ -312,14 +322,16 @@ def generate_result(model, test_data, word_to_ix):
         tag_scores_1 = model(sentence_in_1)[-1]
         tag_scores_2 = model(sentence_in_2)[-1]
         #print(tag_scores_1, tag_scores_2)
-        distance = F.pairwise_distance(tag_scores_1.view(1,-1), tag_scores_2.view(1,-1))
+        distance = F.pairwise_distance(tag_scores_1.view(1,-1), tag_scores_2.view(1,-1),p=1)
         print(distance)
+
+    
 if __name__ == '__main__':
     #preprocess()
     training_data, test_data, word_to_ix = get_datas_from_files()
     #model_v1 = torch.load('model_v1.pt')
-    model_v2 = torch.load('model_v2.pt')
+    model = torch.load('model_v2.pt')
     #train_v1(training_data, test_data, word_to_ix)
-    #train_v2(training_data, test_data, word_to_ix)
-    generate_result(model_v2, test_data, word_to_ix)
-    #et_result_csv_v1(model_v1, test_data, word_to_ix)
+    train_v2(training_data, test_data, word_to_ix)
+    #generate_result(model_v2, test_data, word_to_ix)
+    
