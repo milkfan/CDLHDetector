@@ -257,7 +257,6 @@ def train_v2(training_data, word_to_ix):
                 break
         print('epoch %d: finish to train same codes' % epoch)
         # 训练不同的代码对
-        epoch_loss = 0
         running_loss = 0
         for i in range(6):
             print(i * 500)
