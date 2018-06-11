@@ -9,6 +9,7 @@ import os
 import csv
 from tempfile import NamedTemporaryFile
 import shutil
+import random
 
 import pickle
 
@@ -67,7 +68,6 @@ def pre_process():
     with open('test_data.txt', 'wb') as f:
         pickle.dump(test_data, f)
     print("test_data length: ", len(test_data))
-    print("test_data[0]:", test_data[0])
 
     # save word_to_ix to file
     word_to_ix = {}
@@ -86,11 +86,13 @@ def pre_process():
 def get_datas_from_files():
     with open('training_data.txt', 'rb') as f:
         training_data = pickle.load(f)
+    with open('training_pairs.txt', 'rb') as f:
+        training_pair = pickle.load(f)
     with open('test_data.txt', 'rb') as f:
         test_data = pickle.load(f)
     with open('word_to_ix.txt', 'rb') as f:
         word_to_ix = pickle.load(f)
-    return training_data, test_data, word_to_ix
+    return training_data, training_pair, test_data, word_to_ix
 
 
 def prepare_sequence(sequence, to_inx):
@@ -99,8 +101,8 @@ def prepare_sequence(sequence, to_inx):
     return torch.tensor(idxs)
 
 
-EMBEDDING_DIM = 100
-HIDDEN_DIM = 64
+EMBEDDING_DIM = 32
+HIDDEN_DIM = 16
 
 
 class MyModule(nn.Module):
@@ -198,12 +200,12 @@ class MyModule2(nn.Module):
         self.hidden_dim = hidden_dim
         self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
         # LSTM 以 word_embeddings 作为输入, 输出维度为 hidden_dim 的隐状态值
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers=2)
         self.hidden = self.init_hidden()
 
     def init_hidden(self):
-        return (torch.zeros(1, 1, self.hidden_dim),
-                torch.zeros(1, 1, self.hidden_dim))
+        return (torch.zeros(2, 1, self.hidden_dim),
+                torch.zeros(2, 1, self.hidden_dim))
 
     def forward(self, sentence):
         # print(type(sentence))
@@ -211,6 +213,27 @@ class MyModule2(nn.Module):
         lstm_out, self.hidden = self.lstm(embeds.view(len(sentence), 1, -1), self.hidden)
         tag_scores = F.log_softmax(lstm_out.view(len(sentence), -1), dim=1)
         return tag_scores
+
+def shuffle_training_data(training_data):
+    training_pairs = []
+    #same pairs
+    same_pairs = list(zip(training_data[::2], training_data[1::2]))
+    for pair in same_pairs[:2000]:
+        if len(pair[0]) != 0 and len(pair[1]) != 0:
+            training_pairs.append((pair, 1.0))
+    
+    #different pairs
+    for i in range(6):
+        print(i * 500)
+        for j in range(500):
+            pair = (training_data[i*500+j], training_data[i*500+500+j])
+            if len(pair[0]) != 0 and len(pair[1]) != 0:
+                training_pairs.append((pair, -1.0))
+    random.shuffle(training_pairs)
+    print(len(training_pairs))
+    print('training_pairs[0]', training_pairs[0])
+    with open('training_pairs.txt', 'wb') as f:
+        pickle.dump(training_pairs, f)
 
 
 def train_v2(training_data, word_to_ix):
@@ -225,24 +248,25 @@ def train_v2(training_data, word_to_ix):
         # 训练相同的代码对
         epoch_loss = 0
         running_loss = 0
-        same_pairs = list(zip(training_data[::2], training_data[1::2]))
-        for sentence_1, sentence_2 in same_pairs:
-            if len(sentence_1) == 0 or len(sentence_2) == 0:
-                continue
+        for pair, label in training_data:
             model.zero_grad()
             model.hidden = model.init_hidden()
-
-            # print("tag", tag)
+            sentence_1, sentence_2 = pair
+            #print('len sentence_1', sentence_1)
+            #print('len sentence_2', len(sentence_2))
+            #print('label', label)
             sentence_in_1 = prepare_sequence(sentence_1, word_to_ix)
             sentence_in_2 = prepare_sequence(sentence_2, word_to_ix)
+            min_size = len(sentence_1) if len(sentence_1) < len(sentence_2) else len(sentence_2)
+            index = - min_size
 
-            tag_scores_1 = model(sentence_in_1)[-1]
-            tag_scores_2 = model(sentence_in_2)[-1]
-            # print(tag_scores_1, tag_scores_2)
+            tag_scores_1 = model(sentence_in_1)[index:]
+            tag_scores_2 = model(sentence_in_2)[index:]
+
             distance = F.pairwise_distance(tag_scores_1.view(1, -1), tag_scores_2.view(1, -1), p=1)
             # print(tag_scores[-1],targets)
             # print(distance.data, torch.FloatTensor([1.0]))
-            loss = loss_function(distance, torch.tensor([1.0]))
+            loss = loss_function(distance, torch.tensor([label]))
             loss.backward()
             optimizer.step()
 
@@ -253,40 +277,11 @@ def train_v2(training_data, word_to_ix):
             if i % 200 == 199:
                 print(epoch, i + 1, "running loss: ", running_loss / 199)
                 running_loss = 0
-            if i == 2000:
-                break
-        print('epoch %d: finish to train same codes' % epoch)
-        # 训练不同的代码对
-        running_loss = 0
-        for i in range(6):
-            print(i * 500)
-            for j in range(500):
-                if len(training_data[i * 500 + j]) == 0 or len(training_data[i * 500 + 500 + j]) == 0:
-                    continue
-                model.zero_grad()
-                model.hidden = model.init_hidden()
-
-                sentence_in_1 = prepare_sequence(training_data[i * 500 + j], word_to_ix)
-                sentence_in_2 = prepare_sequence(training_data[i * 500 + 500 + j], word_to_ix)
-                tag_scores_1 = model(sentence_in_1)[-1]
-                tag_scores_2 = model(sentence_in_2)[-1]
-                distance = F.pairwise_distance(tag_scores_1.view(1, -1), tag_scores_2.view(1, -1), p=1)
-
-                loss = loss_function(distance, torch.tensor([-1.0]))
-                loss.backward()
-                optimizer.step()
-
-                running_loss += loss.item()
-                # print(loss.data[0])
-                epoch_loss += loss.item()
-                if j % 100 == 0:
-                    # print(distance)
-                    print(epoch, i + 1, "running loss: ", running_loss / 100)
-                    running_loss = 0
         print('epoch %d: finish to train different codes' % epoch)
         print('average loss of epoch %d: %f' % (epoch, epoch_loss / 5000))
+        print('save model to file')
+        torch.save(model, 'model_v2.pt')
         epoch_loss = 0
-    torch.save(model, "model_v2.pt")
 
 
 def label_test_data(model, test_data, word_to_ix):
@@ -296,7 +291,7 @@ def label_test_data(model, test_data, word_to_ix):
     count = 0
     for key, ast in test_data.items():
         sentence = prepare_sequence(ast, word_to_ix)
-        target = model(sentence)[-1]
+        target = model(sentence)
         test_labels[key] = target
         count += 1
         if (count % 1000) == 1:
@@ -305,6 +300,7 @@ def label_test_data(model, test_data, word_to_ix):
     print('finish test_label')
     with open('test_labels_v2.txt', 'wb') as f:
         pickle.dump(test_labels, f)
+    print('finish generate file test_label')
 
 
 def generate_result(model, test_data, word_to_ix):
@@ -319,6 +315,7 @@ def generate_result(model, test_data, word_to_ix):
     model.training = False
     print('train mode: ', model.training)
     i = 0
+    diff_pairs = 0
     for id1_id2, _ in results.items():
         id1, id2 = id1_id2.split('_')
         id1_file = id1 + '.txt'
@@ -326,14 +323,22 @@ def generate_result(model, test_data, word_to_ix):
 
         tag_scores_1 = test_labels[id1_file]
         tag_scores_2 = test_labels[id2_file]
+        size_1 = tag_scores_1.size()[0]
+        size_2 = tag_scores_2.size()[0]
+        min_size = size_1 if size_1 < size_2 else size_2
+        tag_scores_1 = tag_scores_1[-min_size:] 
+        tag_scores_2 = tag_scores_2[-min_size:]
         # print(tag_scores_1, tag_scores_2)
         distance = F.pairwise_distance(tag_scores_1.view(1, -1), tag_scores_2.view(1, -1), p=1)
-        # print(distance.data[0][0])
+        #print(distance.item())
         if i % 20000 == 0:
             print('%d distance: %f' % (i, distance.item()))
         i += 1
-        if distance.item() > 1:
+        #print(distance.item())
+        if distance.item() > 0.6:
             results[id1_id2] = 0
+            diff_pairs += 1
+    print('diff_pairs', diff_pairs)
     print('generate file')
     with open('my_submission.csv', 'w') as f:
         writer = csv.DictWriter(f, fieldnames=["id1_id2", "predictions"])
@@ -343,11 +348,12 @@ def generate_result(model, test_data, word_to_ix):
 
 
 if __name__ == '__main__':
-    # pre_process()
-    training_data, test_data, word_to_ix = get_datas_from_files()
+    #pre_process()
+    training_data, training_pair, test_data, word_to_ix = get_datas_from_files()
+    #shuffle_training_data(training_data)
     # model_v1 = torch.load('model_v1.pt')
     # train_v1(training_data, test_data, word_to_ix)
-    #train_v2(training_data, word_to_ix)
+    #train_v2(training_pair, word_to_ix)
     model = torch.load('model_v2.pt')
     #label_test_data(model, test_data, word_to_ix)
     generate_result(model, test_data, word_to_ix)
