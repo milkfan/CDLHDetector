@@ -220,7 +220,7 @@ def train_v2(training_data, word_to_ix):
     optimizer = optim.SGD(model.parameters(), lr=0.1)
 
     # start to train
-    for epoch in range(2):
+    for epoch in range(20):
         i = 0
         # 训练相同的代码对
         epoch_loss = 0
@@ -250,8 +250,8 @@ def train_v2(training_data, word_to_ix):
             running_loss += loss.item()
             epoch_loss += loss.item()
             i += 1
-            if i % 20 == 19:
-                print(epoch, i + 1, "running loss: ", running_loss / 19)
+            if i % 200 == 199:
+                print(epoch, i + 1, "running loss: ", running_loss / 199)
                 running_loss = 0
             if i == 2000:
                 break
@@ -285,7 +285,8 @@ def train_v2(training_data, word_to_ix):
                     print(epoch, i + 1, "running loss: ", running_loss / 100)
                     running_loss = 0
         print('epoch %d: finish to train different codes' % epoch)
-
+        print('average loss of epoch %d: %f' % (epoch, epoch_loss / 5000))
+        epoch_loss = 0
     torch.save(model, "model_v2.pt")
 
 
@@ -329,10 +330,10 @@ def generate_result(model, test_data, word_to_ix):
         # print(tag_scores_1, tag_scores_2)
         distance = F.pairwise_distance(tag_scores_1.view(1, -1), tag_scores_2.view(1, -1), p=1)
         # print(distance.data[0][0])
-        if i % 500 == 0:
-            print('%d distance: %f' % (i, distance.data[0][0]))
+        if i % 20000 == 0:
+            print('%d distance: %f' % (i, distance.item()))
         i += 1
-        if distance.data[0][0] > 1:
+        if distance.item() > 1:
             results[id1_id2] = 0
     print('generate file')
     with open('my_submission.csv', 'w') as f:
